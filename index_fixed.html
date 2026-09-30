@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Mario Mini</title>
+<style>
+html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#62c9ff;touch-action:none;font-family:Arial,sans-serif}
+canvas{display:block;width:100%;height:100%}
+#menu,#win{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#0007;color:white;text-align:center;z-index:10}
+#win{display:none}
+button{border:0;border-radius:18px;padding:16px 28px;font-size:22px;font-weight:bold;margin-top:18px;touch-action:manipulation}
+#hud{position:fixed;top:12px;left:0;right:0;text-align:center;color:white;font-weight:bold;font-size:20px;text-shadow:2px 2px #333;z-index:5;pointer-events:none}
+#ctrl{position:fixed;bottom:18px;left:0;right:0;display:flex;justify-content:space-between;padding:0 20px;z-index:6;pointer-events:none}
+.grp{display:flex;gap:12px}.c{width:72px;height:62px;padding:0;margin:0;background:#ffffff99;border:2px solid white;pointer-events:auto}
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+<div id="hud"></div>
+<div id="menu"><h1>🍄 MARIO MINI</h1><p>3 màn chơi • Chạm nút để điều khiển</p><p>◀ ▶ chạy &nbsp; ⬆ nhảy</p><button id="start">BẮT ĐẦU</button></div>
+<div id="win"><h1 id="msg"></h1><p id="sub"></p><button id="again">CHƠI LẠI</button></div>
+<div id="ctrl"><div class="grp"><button class="c" data-k="left">◀</button><button class="c" data-k="right">▶</button></div><div class="grp"><button class="c" data-k="jump">⬆</button></div></div>
+<script>
+const cv=document.getElementById("game"),ctx=cv.getContext("2d");
+let W,H,level=1,score=0,lives=3,run=false,left=false,right=false,jump=false,cam=0;
+let hero,ground,enemies,coins,goal;
+function size(){W=innerWidth;H=innerHeight;cv.width=W*devicePixelRatio;cv.height=H*devicePixelRatio;ctx.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0)}
+addEventListener("resize",size);size();
+
+function newLevel(n){
+ level=n;cam=0;hero={x:60,y:100,w:30,h:44,vx:0,vy:0,on:false};
+ let gy=H-85, len=2200+n*500;
+ ground={x:0,y:gy,w:len,h:100}; goal=len-100;
+ coins=[];enemies=[];
+ for(let i=0;i<18+n*4;i++){let x=180+i*120;if(x<len-120)coins.push({x,y:gy-70-(i%3)*35,got:false})}
+ for(let i=0;i<5+n*2;i++){let x=500+i*280;if(x<len-150)enemies.push({x,y:gy-36,w:34,h:36,v:1,min:x-70,max:x+70,dead:false})}
+}
+function hit(a,b){return a.x<b.x+b.w&&a.x+a.w>b.x&&a.y<b.y+b.h&&a.y+a.h>b.y}
+function start(e){if(e)e.preventDefault();score=0;lives=3;level=1;newLevel(1);run=true;menu.style.display="none";win.style.display="none"}
+startBtn=document.getElementById("start");againBtn=document.getElementById("again");
+startBtn.addEventListener("click",start);startBtn.addEventListener("touchend",start,{passive:false});
+againBtn.addEventListener("click",start);againBtn.addEventListener("touchend",start,{passive:false});
+
+document.querySelectorAll(".c").forEach(b=>{
+ let k=b.dataset.k;
+ function down(e){e.preventDefault();if(k==="left")left=true;if(k==="right")right=true;if(k==="jump")jump=true}
+ function up(e){e.preventDefault();if(k==="left")left=false;if(k==="right")right=false}
+ b.addEventListener("touchstart",down,{passive:false});b.addEventListener("touchend",up,{passive:false});
+ b.addEventListener("pointerdown",down,{passive:false});b.addEventListener("pointerup",up,{passive:false});
+});
+addEventListener("keydown",e=>{if(e.key==="ArrowLeft")left=true;if(e.key==="ArrowRight")right=true;if(e.key==="ArrowUp"||e.key===" ")jump=true});
+addEventListener("keyup",e=>{if(e.key==="ArrowLeft")left=false;if(e.key==="ArrowRight")right=false});
+
+function update(){
+ if(!run)return;
+ hero.vx=(right?4:0)-(left?4:0);
+ if(jump&&hero.on){hero.vy=-11;hero.on=false} jump=false;
+ hero.vy+=.55;hero.x+=hero.vx;hero.y+=hero.vy;hero.on=false;
+ if(hero.y+hero.h>=ground.y){hero.y=ground.y-hero.h;hero.vy=0;hero.on=true}
+ if(hero.x<0)hero.x=0;
+ if(hero.y>H+100){lives--;hero.x=Math.max(50,hero.x-250);hero.y=100;hero.vy=0;if(lives<=0)return finish(false)}
+ coins.forEach(c=>{if(!c.got&&hit(hero,{x:c.x-10,y:c.y-10,w:20,h:20})){c.got=true;score+=10}});
+ enemies.forEach(e=>{
+  if(e.dead)return;e.x+=e.v;if(e.x<e.min||e.x>e.max)e.v*=-1;
+  if(hit(hero,e)){if(hero.vy>2){e.dead=true;hero.vy=-8;score+=50}else{lives--;hero.x=Math.max(50,hero.x-250);hero.y=100;hero.vy=0;if(lives<=0)finish(false)}}
+ });
+ if(hero.x+hero.w>goal)finish(true);
+ cam=Math.max(0,Math.min(ground.w-W,hero.x-W*.35));
+}
+function finish(ok){
+ if(ok&&level<3){run=false;msg.textContent="🏆 MÀN "+level+" XONG!";sub.textContent="Chuẩn bị màn "+(level+1);win.style.display="flex";setTimeout(()=>{win.style.display="none";newLevel(++level);run=true},900)}
+ else{run=false;msg.textContent=ok?"👑 HOÀN THÀNH!":"💥 GAME OVER";sub.textContent="Điểm: "+score;win.style.display="flex"}
+}
+function draw(){
+ ctx.clearRect(0,0,W,H);
+ let g=ctx.createLinearGradient(0,0,0,H);g.addColorStop(0,"#54c8ff");g.addColorStop(1,"#dff8ff");ctx.fillStyle=g;ctx.fillRect(0,0,W,H);
+ ctx.save();ctx.translate(-cam,0);
+ ctx.fillStyle="#5ab63c";ctx.fillRect(0,ground.y,ground.w,ground.h);
+ for(let i=0;i<ground.w;i+=360){ctx.fillStyle="#fff";ctx.beginPath();ctx.arc(i+80,90,25,0,7);ctx.arc(i+115,82,32,0,7);ctx.arc(i+150,95,23,0,7);ctx.fill()}
+ coins.forEach(c=>{if(!c.got){ctx.fillStyle="#ffd52a";ctx.beginPath();ctx.arc(c.x,c.y,10,0,7);ctx.fill()}});
+ enemies.forEach(e=>{if(!e.dead){ctx.fillStyle="#873a2b";ctx.fillRect(e.x,e.y,e.w,e.h);ctx.fillStyle="white";ctx.fillRect(e.x+6,e.y+8,7,9);ctx.fillRect(e.x+21,e.y+8,7,9)}});
+ ctx.fillStyle="#555";ctx.fillRect(goal,ground.y-170,7,170);ctx.fillStyle="#e33";ctx.beginPath();ctx.moveTo(goal+7,ground.y-165);ctx.lineTo(goal+75,ground.y-140);ctx.lineTo(goal+7,ground.y-115);ctx.fill();
+ ctx.fillStyle="#d92828";ctx.fillRect(hero.x,hero.y,hero.w,14);ctx.fillStyle="#f0b17c";ctx.fillRect(hero.x+6,hero.y+14,20,18);ctx.fillStyle="#245fbe";ctx.fillRect(hero.x+3,hero.y+32,24,12);ctx.fillStyle="#222";ctx.fillRect(hero.x,hero.y+42,12,6);ctx.fillRect(hero.x+20,hero.y+42,12,6);
+ ctx.restore();
+ hud.textContent="MÀN "+level+"/3  🪙 "+Math.floor(score/10)+"  ❤️ "+lives;
+}
+function loop(){update();draw();requestAnimationFrame(loop)}loop();
+</script>
+</body></html>
