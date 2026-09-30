@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>Mario Mini Adventure</title>
+<style>
+html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#63c9ff;font-family:Arial,sans-serif;touch-action:none}
+canvas{display:block;width:100vw;height:100vh;image-rendering:pixelated}
+#hud{position:fixed;top:max(10px,env(safe-area-inset-top));left:0;right:0;text-align:center;color:#fff;font-weight:900;font-size:18px;text-shadow:2px 2px #333;z-index:3;pointer-events:none}
+#menu,#over{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;flex-direction:column;background:#0008;color:#fff;text-align:center;z-index:5}
+#over{display:none}
+h1{font-size:42px;margin:0 0 8px;text-shadow:4px 4px #333}
+p{margin:6px 12px}
+button{border:0;border-radius:16px;padding:13px 24px;font-size:20px;font-weight:bold;margin-top:14px}
+#controls{position:fixed;left:0;right:0;bottom:max(15px,env(safe-area-inset-bottom));display:flex;justify-content:space-between;padding:0 18px;z-index:4}
+.group{display:flex;gap:10px}.ctrl{width:68px;height:58px;border-radius:16px;border:3px solid #fff;background:#ffffff99;font-size:27px;color:#222}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="hud"></div>
+<div id="menu"><h1>🍄 MARIO MINI</h1><p>Adventure • 3 màn chơi</p><p>◀ ▶ chạy · ⬆ nhảy</p><button id="start">BẮT ĐẦU</button></div>
+<div id="over"><h1 id="result"></h1><p id="summary"></p><button id="again">CHƠI LẠI</button></div>
+<div id="controls">
+ <div class="group"><button class="ctrl" data-k="l">◀</button><button class="ctrl" data-k="r">▶</button></div>
+ <div class="group"><button class="ctrl" data-k="j">⬆</button></div>
+</div>
+<script>
+const c=document.getElementById('c'),x=c.getContext('2d');
+let dpr=1,W=960,H=540,keys={l:false,r:false},jump=false,level=1,score=0,lives=3,cam=0,playing=false,inv=0;
+let p,plats=[],coins=[],foes=[],items=[],finish=0,world=0;
+function resize(){dpr=Math.min(2,devicePixelRatio||1);W=innerWidth;H=innerHeight;c.width=W*dpr;c.height=H*dpr;x.setTransform(dpr,0,0,dpr,0,0)} addEventListener('resize',resize);resize();
+function setup(n){
+ level=n;cam=0;inv=90;
+ const s=[{len:3000,gap:0},{len:3700,gap:0},{len:4500,gap:0}][n-1];world=s.len;
+ p={x:70,y:330,w:30,h:46,vx:0,vy:0,on:false,power:0};
+ plats=[{x:0,y:Math.min(H-55,470),w:world,h:80}];
+ const y=Math.min(H-55,470);
+ for(let i=0;i<14+n*3;i++){
+   let xx=280+i*180+(i%3)*35;
+   if(xx>world-300)break;
+   let yy=y-(i%4)*55;
+   plats.push({x:xx,y:yy,w:50+(i%2)*25,h:30});
+ }
+ coins=[];foes=[];items=[];
+ for(let i=0;i<20+n*5;i++){let xx=180+i*145; if(xx>world-150)break; coins.push({x:xx,y:y-60-(i%3)*35,t:false})}
+ for(let i=0;i<7+n*2;i++){let xx=500+i*380;foes.push({x:xx,y:y-42,w:35,h:38,v:(i%2?1:-1)*1.1,min:xx-100,max:xx+100,dead:false})}
+ for(let i=0;i<3;i++){let xx=800+i*900;items.push({x:xx,y:y-100,t:false})}
+ finish=world-120;
+}
+function hit(a,b){return a.x<b.x+b.w&&a.x+a.w>b.x&&a.y<b.y+b.h&&a.y+a.h>b.y}
+function lose(){
+ if(inv>0)return;
+ lives--; inv=100;
+ if(lives<=0)return end(false);
+ p.x=Math.max(60,p.x-260);p.y=250;p.vy=0;
+}
+function end(win){
+ playing=false;document.getElementById('over').style.display='flex';
+ if(win && level<3){document.getElementById('result').textContent='🏆 MÀN '+level+' HOÀN THÀNH!';document.getElementById('summary').textContent='Chuẩn bị sang màn '+(level+1)+'...';setTimeout(()=>{document.getElementById('over').style.display='none';setup(++level);playing=true},1200)}
+ else {document.getElementById('result').textContent=win?'👑 HOÀN THÀNH 3 MÀN!':'💥 GAME OVER';document.getElementById('summary').textContent='Điểm: '+score+'  •  Xu: '+Math.floor(score/10)}
+}
+function update(){
+ if(!playing)return;
+ if(inv>0)inv--;
+ p.vx=(keys.r?4.3:0)+(keys.l?-4.3:0);
+ if(jump&&p.on){p.vy=-12;p.on=false} jump=false;
+ p.vy+=.58;p.x+=p.vx;p.y+=p.vy;
+ if(p.x<0)p.x=0;
+ p.on=false;
+ for(const q of plats)if(hit(p,q)&&p.vy>=0&&p.y+p.h-p.vy<=q.y+5){p.y=q.y-p.h;p.vy=0;p.on=true}
+ if(p.y>H+100)lose();
+ for(const q of coins)if(!q.t&&hit(p,{x:q.x-11,y:q.y-11,w:22,h:22})){q.t=true;score+=10}
+ for(const it of items)if(!it.t&&hit(p,{x:it.x-15,y:it.y-15,w:30,h:30})){it.t=true;p.power=1;score+=50}
+ for(const e of foes)if(!e.dead){
+   e.x+=e.v;if(e.x<e.min||e.x>e.max)e.v*=-1;
+   if(hit(p,e)){
+     if(p.vy>2&&p.y+p.h-e.y<18){e.dead=true;p.vy=-8;score+=50}
+     else if(p.power){p.power=0;score+=25}
+     else lose();
+   }
+ }
+ if(p.x+p.w>finish){if(level<3)end(true);else end(true)}
+ cam=Math.max(0,Math.min(world-W,p.x-W*.35));
+}
+function draw(){
+ x.clearRect(0,0,W,H);
+ const sky=x.createLinearGradient(0,0,0,H);sky.addColorStop(0,'#54c8ff');sky.addColorStop(1,'#d9f5ff');x.fillStyle=sky;x.fillRect(0,0,W,H);
+ x.save();x.translate(-cam,0);
+ // clouds
+ for(let i=0;i<world;i+=420){x.fillStyle='#fff';x.beginPath();x.arc(i+80,100,28,0,7);x.arc(i+115,92,36,0,7);x.arc(i+155,105,25,0,7);x.fill()}
+ // hills
+ for(let i=0;i<world;i+=500){x.fillStyle='#6fc84a';x.beginPath();x.moveTo(i,470);x.lineTo(i+230,270);x.lineTo(i+460,470);x.fill()}
+ // platforms
+ for(const q of plats){x.fillStyle='#99542b';x.fillRect(q.x,q.y,q.w,q.h);x.fillStyle='#4eb83e';x.fillRect(q.x,q.y,q.w,10)}
+ // coins
+ for(const q of coins)if(!q.t){x.fillStyle='#ffd52a';x.beginPath();x.arc(q.x,q.y,11,0,7);x.fill();x.strokeStyle='#a66d00';x.stroke()}
+ // powerups
+ for(const q of items)if(!q.t){x.fillStyle='#e93b3b';x.fillRect(q.x-14,q.y-14,28,28);x.fillStyle='#fff';x.fillRect(q.x-8,q.y-10,6,6);x.fillRect(q.x+2,q.y-10,6,6)}
+ // enemies
+ for(const e of foes)if(!e.dead){x.fillStyle='#8b3d2d';x.fillRect(e.x,e.y,e.w,e.h);x.fillStyle='#fff';x.fillRect(e.x+6,e.y+8,8,10);x.fillRect(e.x+21,e.y+8,8,10);x.fillStyle='#111';x.fillRect(e.x+9,e.y+11,4,6);x.fillRect(e.x+24,e.y+11,4,6)}
+ // finish
+ x.fillStyle='#555';x.fillRect(finish,260,7,210);x.fillStyle='#e33';x.beginPath();x.moveTo(finish+7,265);x.lineTo(finish+78,290);x.lineTo(finish+7,315);x.fill();
+ // player
+ if(!(inv>0&&Math.floor(inv/6)%2)) {
+  x.fillStyle='#d92828';x.fillRect(p.x,p.y,p.w,14);x.fillStyle='#f0b17c';x.fillRect(p.x+6,p.y+14,20,18);
+  x.fillStyle='#245fbe';x.fillRect(p.x+3,p.y+32,p.w-6,14);x.fillStyle='#222';x.fillRect(p.x,p.y+44,12,5);x.fillRect(p.x+20,p.y+44,12,5);
+ }
+ x.restore();
+ document.getElementById('hud').textContent=`MÀN ${level}/3   🪙 ${score/10}   ❤️ ${lives}   ${p.power?'🍄 SỨC MẠNH':''}`;
+}
+function loop(){update();draw();requestAnimationFrame(loop)}loop();
+function start(){score=0;lives=3;level=1;setup(1);playing=true;document.getElementById('menu').style.display='none';document.getElementById('over').style.display='none'}
+document.getElementById('start').onclick=start;document.getElementById('again').onclick=start;
+addEventListener('keydown',e=>{if(e.key==='ArrowLeft'||e.key==='a')keys.l=true;if(e.key==='ArrowRight'||e.key==='d')keys.r=true;if(['ArrowUp',' ','w'].includes(e.key)){e.preventDefault();jump=true}});
+addEventListener('keyup',e=>{if(e.key==='ArrowLeft'||e.key==='a')keys.l=false;if(e.key==='ArrowRight'||e.key==='d')keys.r=false});
+document.querySelectorAll('.ctrl').forEach(b=>{let k=b.dataset.k;b.addEventListener('pointerdown',e=>{e.preventDefault();if(k==='j')jump=true;else keys[k]=true});b.addEventListener('pointerup',e=>{e.preventDefault();if(k!=='j')keys[k]=false});b.addEventListener('pointercancel',()=>{if(k!=='j')keys[k]=false})});
+</script>
+</body>
+</html>
